@@ -1,0 +1,79 @@
+#!/bin/sh /etc/rc.common
+# (C) 2024 nosignal
+# Skrip untuk memantau perubahan IP dan menjalankan /etc/init.d/neko reload
+
+START=99
+
+INTERFACES="wwan0 usb0 eth1"  # Daftar antarmuka yang ingin dipantau (pisahkan dengan spasi)
+LOG_FILE="/var/log/neko-monitor.log"  # Lokasi log
+NEKO_SERVICE="/etc/init.d/neko"      # Lokasi service neko
+
+# Fungsi untuk menulis log
+tulis_log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Fungsi untuk mendapatkan IP dari antarmuka
+get_ip() {
+    ip addr show "$1" | awk '/inet / {print $2}' | cut -d'/' -f1
+}
+
+# Fungsi untuk memantau perubahan IP
+monitor_ip() {
+    interface="$1"
+    prev_ip_file="/tmp/ip_$interface"  # File sementara untuk menyimpan IP sebelumnya
+    current_ip=$(get_ip "$interface")
+
+    # Ambil IP sebelumnya
+    if [ -f "$prev_ip_file" ]; then
+        prev_ip=$(cat "$prev_ip_file")
+    else
+        prev_ip=""
+    fi
+
+    # Jika IP berubah, reload service
+    if [ "$current_ip" != "$prev_ip" ]; then
+        tulis_log "IP pada $interface berubah dari $prev_ip ke $current_ip"
+        echo "$current_ip" > "$prev_ip_file"
+        
+        # Jalankan reload service
+        $NEKO_SERVICE reload
+        if [ $? -eq 0 ]; then
+            tulis_log "Perintah reload untuk $NEKO_SERVICE berhasil."
+        else
+            tulis_log "Gagal menjalankan perintah reload untuk $NEKO_SERVICE."
+        fi
+    fi
+}
+
+# Fungsi untuk memulai pemantauan
+start_monitoring() {
+    tulis_log "Memulai pemantauan IP pada antarmuka: $INTERFACES"
+    
+    # Jalankan loop untuk memantau perubahan IP
+    while true; do
+        for interface in $INTERFACES; do
+            monitor_ip "$interface"
+        done
+        sleep 3  # Interval pengecekan
+    done
+}
+
+start() {
+    tulis_log "Memulai service neko-monitor."
+    start_monitoring &
+    echo $! > /var/run/neko-monitor.pid
+}
+
+stop() {
+    tulis_log "Menghentikan service neko-monitor."
+    if [ -f /var/run/neko-monitor.pid ]; then
+        kill "$(cat /var/run/neko-monitor.pid)" 2>/dev/null
+        rm -f /var/run/neko-monitor.pid
+    fi
+}
+
+restart() {
+    stop
+    start
+}
