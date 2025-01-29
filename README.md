@@ -9,7 +9,6 @@ Fix bengong untuk Neko-sing box setelah pergantian IP
  chmod +x /etc/init.d/neko-monitor
  /etc/init.d/neko-monitor enable
  /etc/init.d/neko-monitor start
- /etc/init.d/neko disable
 
 
 
